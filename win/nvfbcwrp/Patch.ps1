@@ -1,5 +1,9 @@
 # NVFBC DLL patch script
 # Requires administrator privileges to run
+param(
+    [switch]$Force
+)
+
 Function Test-Administrator {
     [OutputType([bool])]
     param()
@@ -24,7 +28,8 @@ Else {
 }
 If (-Not (Test-Administrator)) {
     Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass -Force
-    $Proc = Start-Process -PassThru -Verb RunAs $pwsh -Args "-ExecutionPolicy Bypass -Command Set-Location '$PSScriptRoot'; &'$PSCommandPath' EVAL"
+    $forceParam = if ($Force) { " -Force" } else { "" }
+    $Proc = Start-Process -PassThru -Verb RunAs $pwsh -Args "-ExecutionPolicy Bypass -Command Set-Location '$PSScriptRoot'; &'$PSCommandPath' EVAL$forceParam"
     If ($null -Ne $Proc) {
         $Proc.WaitForExit()
     }
@@ -34,8 +39,9 @@ If (-Not (Test-Administrator)) {
     }
     exit
 }
-ElseIf (($args.Count -Eq 1) -And ($args[0] -Eq "EVAL")) {
-    Start-Process $pwsh -NoNewWindow -Args "-ExecutionPolicy Bypass -Command Set-Location '$PSScriptRoot'; &'$PSCommandPath'"
+ElseIf (($args.Count -Ge 1) -And ($args[0] -Eq "EVAL")) {
+    $forceParam = if ($Force) { " -Force" } else { "" }
+    Start-Process $pwsh -NoNewWindow -Args "-ExecutionPolicy Bypass -Command Set-Location '$PSScriptRoot'; &'$PSCommandPath'$forceParam"
     exit
 }
 Function Unlock-DLL {
@@ -116,12 +122,42 @@ if (-Not (Test-Path $wrapperNvFBC32)) {
 }
 
 try {
+    # Helper function to check if file sizes are similar (within 10% tolerance)
+    function Test-SimilarFileSize {
+        param (
+            [string]$file1,
+            [string]$file2,
+            [double]$tolerance = 0.10
+        )
+
+        if (-Not (Test-Path $file1) -or -Not (Test-Path $file2)) {
+            return $false
+        }
+
+        $size1 = (Get-Item $file1).Length
+        $size2 = (Get-Item $file2).Length
+
+        $diff = [Math]::Abs($size1 - $size2)
+        $avgSize = ($size1 + $size2) / 2
+
+        return ($diff / $avgSize) -le $tolerance
+    }
+
     # Step 1: Backup NvFBC64.dll
     if (Test-Path $originalNvFBC64) {
-        Write-Host "Rename $originalNvFBC64 to $backupNvFBC64"
-        Unlock-DLL $originalNvFBC64
-        Move-Item -Path $originalNvFBC64 -Destination $backupNvFBC64 -Force
-        Write-Host "[OK] NvFBC64.dll backup completed"
+        # Check if the current file is already the wrapper (similar size) unless -Force is used
+        if (-Not $Force -and (Test-SimilarFileSize $originalNvFBC64 $wrapperNvFBC64)) {
+            Write-Host "NvFBC64.dll appears to already be patched (similar size to wrapper), skipping backup"
+        }
+        else {
+            if ($Force) {
+                Write-Host "Force flag set, backing up current file regardless of size"
+            }
+            Write-Host "Rename $originalNvFBC64 to $backupNvFBC64"
+            Unlock-DLL $originalNvFBC64
+            Move-Item -Path $originalNvFBC64 -Destination $backupNvFBC64 -Force
+            Write-Host "[OK] NvFBC64.dll backup completed"
+        }
     }
     else {
         Write-Warning "NvFBC64.dll not found"
@@ -129,10 +165,19 @@ try {
 
     # Step 2: Backup NvFBC.dll
     if (Test-Path $originalNvFBC32) {
-        Write-Host "Rename $originalNvFBC32 to $backupNvFBC32"
-        Unlock-DLL $originalNvFBC32
-        Move-Item -Path $originalNvFBC32 -Destination $backupNvFBC32 -Force
-        Write-Host "[OK] NvFBC.dll backup completed"
+        # Check if the current file is already the wrapper (similar size) unless -Force is used
+        if (-Not $Force -and (Test-SimilarFileSize $originalNvFBC32 $wrapperNvFBC32)) {
+            Write-Host "NvFBC.dll appears to already be patched (similar size to wrapper), skipping backup"
+        }
+        else {
+            if ($Force) {
+                Write-Host "Force flag set, backing up current file regardless of size"
+            }
+            Write-Host "Rename $originalNvFBC32 to $backupNvFBC32"
+            Unlock-DLL $originalNvFBC32
+            Move-Item -Path $originalNvFBC32 -Destination $backupNvFBC32 -Force
+            Write-Host "[OK] NvFBC.dll backup completed"
+        }
     }
     else {
         Write-Warning "NvFBC.dll not found"
