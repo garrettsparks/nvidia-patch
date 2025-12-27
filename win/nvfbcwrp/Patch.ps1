@@ -89,6 +89,32 @@ $backupNvFBC32 = "$sysWOW64Path\NvFBC_.dll"
 $wrapperNvFBC64 = "$scriptDir\nvfbcwrp64.dll"
 $wrapperNvFBC32 = "$scriptDir\nvfbcwrp32.dll"
 
+# Download wrapper DLLs if not found locally
+$nvfbcwrp64Url = "https://gist.github.com/Snawoot/17b14e7ce0f7412b91587c2723719eff/raw/e8e9658fd20751ad875477f37b49ea158ece896d/nvfbcwrp64.dll"
+$nvfbcwrp32Url = "https://gist.github.com/Snawoot/17b14e7ce0f7412b91587c2723719eff/raw/e8e9658fd20751ad875477f37b49ea158ece896d/nvfbcwrp32.dll"
+
+if (-Not (Test-Path $wrapperNvFBC64)) {
+    Write-Host "nvfbcwrp64.dll not found locally. Downloading from GitHub..."
+    try {
+        Invoke-WebRequest -Uri $nvfbcwrp64Url -OutFile $wrapperNvFBC64 -UseBasicParsing
+        Write-Host "[OK] nvfbcwrp64.dll downloaded successfully"
+    }
+    catch {
+        throw "Failed to download nvfbcwrp64.dll: $($_.Exception.Message)"
+    }
+}
+
+if (-Not (Test-Path $wrapperNvFBC32)) {
+    Write-Host "nvfbcwrp32.dll not found locally. Downloading from GitHub..."
+    try {
+        Invoke-WebRequest -Uri $nvfbcwrp32Url -OutFile $wrapperNvFBC32 -UseBasicParsing
+        Write-Host "[OK] nvfbcwrp32.dll downloaded successfully"
+    }
+    catch {
+        throw "Failed to download nvfbcwrp32.dll: $($_.Exception.Message)"
+    }
+}
+
 try {
     # Step 1: Backup NvFBC64.dll
     if (Test-Path $originalNvFBC64) {
