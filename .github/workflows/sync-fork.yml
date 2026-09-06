@@ -1,0 +1,43 @@
+name: Sync fork master with upstream
+
+# Rebase this fork's commits onto upstream/master and force-push.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Mondays at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Rebase master onto upstream/master
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          # GITHUB_TOKEN cannot push .github/workflows changes; PAT with workflows scope can.
+          token: ${{ secrets.NVPATCH_SYNC_TOKEN }}
+
+      - name: Rebase onto upstream/master and force-push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/keylase/nvidia-patch.git
+          git fetch upstream master
+
+          if [ "$(git merge-base HEAD upstream/master)" = "$(git rev-parse upstream/master)" ]; then
+            echo "::notice::Already based on latest upstream/master; nothing to do."
+            exit 0
+          fi
+
+          if ! git rebase upstream/master; then
+            git rebase --abort || true
+            echo "::error::Rebase onto upstream/master hit conflicts; resolve locally and push."
+            exit 1
+          fi
+
+          git push --force-with-lease origin master
+          echo "::notice::Rebased onto $(git rev-parse --short upstream/master) and force-pushed."
