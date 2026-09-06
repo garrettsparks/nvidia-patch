@@ -501,6 +501,33 @@ Function Invoke-FinalizeOwner {
     }
 }
 
+# Latest wrapper release, same links as README.md.
+$WrapperUrls = @{
+    'nvfbcwrp64.dll' = 'https://gist.github.com/Snawoot/17b14e7ce0f7412b91587c2723719eff/raw/e8e9658fd20751ad875477f37b49ea158ece896d/nvfbcwrp64.dll'
+    'nvfbcwrp32.dll' = 'https://gist.github.com/Snawoot/17b14e7ce0f7412b91587c2723719eff/raw/e8e9658fd20751ad875477f37b49ea158ece896d/nvfbcwrp32.dll'
+}
+
+Function Save-Wrapper {
+    # Downloads a missing wrapper DLL next to Patch.ps1. Writes to a .part file first so an
+    # interrupted download never leaves a partial DLL that a later run would pick up.
+    param([Parameter(Mandatory)][string]$Path)
+    $file = Split-Path -Leaf $Path
+    $url = $WrapperUrls[$file]
+    $part = "$Path.part"
+    Write-Host "$file not found locally. Downloading from $url"
+    # Windows PowerShell 5.1 may default to TLS 1.0, which GitHub refuses.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $part -UseBasicParsing
+        Move-Item -LiteralPath $part -Destination $Path -Force
+    }
+    catch {
+        Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+        throw "Failed to download ${file}: $($_.Exception.Message). Download it by hand (see README.md) and put it next to Patch.ps1. Nothing was changed."
+    }
+    Write-Host "OK: downloaded $file"
+}
+
 Function Invoke-Patch {
     $scriptDir = $PSScriptRoot
     Write-Host 'Starting NVFBC DLL patch...'
@@ -514,7 +541,7 @@ Function Invoke-Patch {
     # Pre-flight: all checks run before anything is changed.
     foreach ($t in $targets) {
         if (-not (Test-Path -LiteralPath $t.Wrapper -PathType Leaf)) {
-            throw "$(Split-Path -Leaf $t.Wrapper) was not found in $scriptDir. Put nvfbcwrp64.dll and nvfbcwrp32.dll next to Patch.ps1. Nothing was changed."
+            Save-Wrapper -Path $t.Wrapper   # throws (Nothing was changed.) if the download fails
         }
         if (-not (Test-Path -LiteralPath $t.Dir -PathType Container)) {
             throw "Folder not found: $($t.Dir). Nothing was changed."
